@@ -442,7 +442,6 @@ def _send_telegram(body, config, interface=None, verbose=False,
     free of external Python dependencies.
     """
     url = f"https://api.telegram.org/bot{config['telegram_bot_token']}/sendMessage"
-    # Bold subject line in Telegram Markdown
     text = f"*{subject}*\n{body}"
     data = {
         'chat_id': config['telegram_chat_id'],
@@ -613,7 +612,7 @@ def test_alerts(config, flags):
     """
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     body = (
-        f"This is a test alert from check_connectivity.py.\n"
+        f"This is a test alert.\n"
         f"Timestamp: {timestamp}\n\n"
         f"If you received this message, the notification channel is "
         f"configured correctly."
