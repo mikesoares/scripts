@@ -8,7 +8,7 @@ Collection of useful standalone scripts. Each script is self-contained with its 
 
 Network interface connectivity monitor. Checks whether configured network interfaces can reach external websites over HTTPS, optionally verifies ISP routing via WHOIS, tracks state changes, and sends alerts (email and/or Telegram) when interfaces go down or recover.
 
-**Requirements:** Python 3.6+, Linux (`SO_BINDTODEVICE`), root or `CAP_NET_RAW`. Telegram and WHOIS features require `curl` and `whois` (standard Linux utilities).
+**Requirements:** Python 3.6+, Linux (`SO_BINDTODEVICE`), root or `CAP_NET_RAW`. Telegram and WHOIS features require `curl` and `whois` (`apt install curl whois`).
 
 **Usage:**
 
