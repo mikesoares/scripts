@@ -21,8 +21,10 @@ python check_connectivity.py -v    # Verbose output
 
 1. Tests each configured interface by attempting HTTPS connections to test websites
 2. Compares current state against the previous state in `interface_states.csv`
-3. Sends an email alert if any interface changed state (up→down or down→up)
+3. If any interface changed state (up→down or down→up), sends an email alert via a working interface
 4. Saves current state for the next run
+
+On the first run (or if the state file is corrupted), state is stored without sending alerts.
 
 **Configuration:** All settings are read from environment variables. Copy `.env.example` to `.env` and fill in your values. See `.env.example` for the full list of variables and their defaults.
 

@@ -7,23 +7,63 @@ import csv
 from email.mime.text import MIMEText
 
 
+class _BoundSMTP(smtplib.SMTP):
+    """SMTP client that binds to a specific network interface via SO_BINDTODEVICE."""
+
+    def __init__(self, interface, *args, **kwargs):
+        self._bind_interface = interface
+        super().__init__(*args, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        if timeout is not None and not timeout:
+            raise ValueError('Non-blocking socket (timeout=0) is not supported')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
+                        self._bind_interface.encode())
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+        return sock
+
+
+class _BoundSMTP_SSL(smtplib.SMTP_SSL):
+    """SMTP_SSL client that binds to a specific network interface via SO_BINDTODEVICE."""
+
+    def __init__(self, interface, *args, **kwargs):
+        self._bind_interface = interface
+        super().__init__(*args, **kwargs)
+
+    def _get_socket(self, host, port, timeout):
+        if timeout is not None and not timeout:
+            raise ValueError('Non-blocking socket (timeout=0) is not supported')
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE,
+                        self._bind_interface.encode())
+        sock.settimeout(timeout)
+        sock.connect((host, port))
+        sock = self.context.wrap_socket(sock, server_hostname=self._host)
+        return sock
+
+
 def check_connectivity(interface, websites, verbose):
     """Check connectivity of a specific interface to a list of websites using SSL."""
     successful = False
     failures = []
     for website in websites:
+        sock = None
         try:
             # Create a socket and bind it to the specific interface
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode())
             sock.settimeout(5)  # 5-second timeout
 
-            # Resolve the website and attempt a connection via SSL
+            # Resolve the website and attempt a connection via SSL.
+            # DNS resolution uses the system default route (not bound to the
+            # interface) — that's intentional. We only care whether the
+            # interface can carry TCP traffic, not whether it can resolve DNS.
             context = ssl.create_default_context()
             host_ip = socket.gethostbyname(website)
             with context.wrap_socket(sock, server_hostname=website) as ssl_sock:
                 ssl_sock.connect((host_ip, 443))  # HTTPS port
-                ssl_sock.close()
             successful = True
             if verbose:
                 print(f"Successfully connected to {website} via {interface}.")
@@ -31,12 +71,19 @@ def check_connectivity(interface, websites, verbose):
             failures.append(f"{website}: {e}")
             if verbose:
                 print(f"Failed to connect to {website} via {interface}: {e}")
+            # Close the raw socket on failure — wrap_socket may not have
+            # been reached, so the context manager wouldn't clean it up.
+            if sock is not None:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
 
     return successful, failures
 
 
-def send_email(sender_email, recipient_email, subject, body, smtp_server, smtp_port, login, password, use_ssl=False, timeout=10):
-    """Send an email notification."""
+def send_email(sender_email, recipient_email, subject, body, smtp_server, smtp_port, login, password, use_ssl=False, timeout=10, interface=None):
+    """Send an email notification, optionally bound to a specific network interface."""
     msg = MIMEText(body)
     msg['From'] = sender_email
     msg['To'] = recipient_email
@@ -44,14 +91,25 @@ def send_email(sender_email, recipient_email, subject, body, smtp_server, smtp_p
 
     if use_ssl:
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=timeout) as server:
-            server.login(login, password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
+        if interface:
+            with _BoundSMTP_SSL(interface, host=smtp_server, port=smtp_port, context=context, timeout=timeout) as server:
+                server.login(login, password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
+        else:
+            with smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=timeout) as server:
+                server.login(login, password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
     else:
-        with smtplib.SMTP(smtp_server, smtp_port, timeout=timeout) as server:
-            server.starttls()
-            server.login(login, password)
-            server.sendmail(sender_email, recipient_email, msg.as_string())
+        if interface:
+            with _BoundSMTP(interface, host=smtp_server, port=smtp_port, timeout=timeout) as server:
+                server.starttls()
+                server.login(login, password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
+        else:
+            with smtplib.SMTP(smtp_server, smtp_port, timeout=timeout) as server:
+                server.starttls()
+                server.login(login, password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
 
 
 def load_state(state_file):
@@ -60,11 +118,19 @@ def load_state(state_file):
         return {}
 
     state = {}
-    with open(state_file, mode='r') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            interface, status = row
-            state[interface] = status
+    try:
+        with open(state_file, mode='r') as file:
+            reader = csv.reader(file)
+            for row in reader:
+                if len(row) != 2:
+                    raise ValueError(f"expected 2 columns, got {len(row)}")
+                interface, status = row
+                if status not in ('up', 'down'):
+                    raise ValueError(f"invalid status '{status}' for {interface}")
+                state[interface] = status
+    except (ValueError, csv.Error):
+        # Malformed CSV — treat as first run so state gets reinitialized
+        return {}
     return state
 
 
@@ -179,7 +245,7 @@ def main():
         if successful:
             if verbose:
                 print(f"Interface {label} ({interface}) is working.")
-            working_interface = interface  # Update to the last working interface
+            working_interface = interface
             if previous_state.get(interface) == "down":
                 restored_interfaces.append(label)
         else:
@@ -211,10 +277,10 @@ def main():
 
             if working_interface:
                 if verbose:
-                    print(f"Using working interface {working_interface} to send email.")
+                    print(f"Sending alert email via interface {working_interface}.")
             else:
                 if verbose:
-                    print("No working interface detected. Attempting to send email regardless.")
+                    print("No working interface detected. Attempting to send email without binding.")
 
             try:
                 send_email(
@@ -227,7 +293,8 @@ def main():
                     config['smtp_login'],
                     config['smtp_password'],
                     use_ssl=config['use_ssl'],
-                    timeout=config['email_timeout']
+                    timeout=config['email_timeout'],
+                    interface=working_interface
                 )
                 if verbose:
                     print("Alert email sent successfully.")
