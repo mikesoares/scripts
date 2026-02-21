@@ -107,7 +107,8 @@ def load_config():
 
     # WHOIS / ISP verification
     whois_enabled = os.environ.get('WHOIS_ENABLED', 'false').lower() in ('true', '1', 'yes')
-    ip_lookup_url = os.environ.get('IP_LOOKUP_URL', 'https://api.ipify.org')
+    ip_lookup_urls_raw = os.environ.get('IP_LOOKUP_URL', 'https://api.ipify.org')
+    ip_lookup_urls = [u.strip() for u in ip_lookup_urls_raw.split(',') if u.strip()]
 
     state_file = os.environ.get('STATE_FILE', 'interface_states.csv')
 
@@ -132,7 +133,7 @@ def load_config():
         'missing_telegram_vars': missing_telegram,
         # WHOIS
         'whois_available': whois_enabled,
-        'ip_lookup_url': ip_lookup_url,
+        'ip_lookup_urls': ip_lookup_urls,
         # State
         'state_file': state_file,
     }
@@ -300,7 +301,22 @@ def _run_whois(ip):
         return None
 
 
-def verify_isp(interface, expected_org, ip_lookup_url, verbose=False):
+def _lookup_public_ip(ip_lookup_urls, interface=None, verbose=False):
+    """Fetch the public IP by trying each URL in order until one succeeds.
+
+    Returns (public_ip: str, url_used: str) on success, or (None, None)
+    if all URLs fail.
+    """
+    for url in ip_lookup_urls:
+        success, body = _curl_request(url, interface=interface, timeout=10)
+        if success and body.strip():
+            return body.strip(), url
+        if verbose:
+            print(f"  IP lookup failed via {url}" + (f" for {interface}" if interface else ""))
+    return None, None
+
+
+def verify_isp(interface, expected_org, ip_lookup_urls, verbose=False):
     """Verify an interface routes through the expected ISP via IP + WHOIS.
 
     Fetches the public IP through the specified interface, then runs a
@@ -308,16 +324,17 @@ def verify_isp(interface, expected_org, ip_lookup_url, verbose=False):
     Uses case-insensitive substring matching to handle naming variations
     (e.g., "Bell Canada" vs "BELL CANADA" vs "Bell Canada Inc.").
 
+    ip_lookup_urls is a list of URLs to try in order (fallback chain).
+
     Returns True if verification passes or cannot be performed (graceful
     fallback). Returns False only on an explicit ISP mismatch.
     """
-    success, public_ip = _curl_request(ip_lookup_url, interface=interface, timeout=10)
-    if not success or not public_ip.strip():
+    public_ip, _url = _lookup_public_ip(ip_lookup_urls, interface=interface, verbose=verbose)
+    if not public_ip:
         if verbose:
-            print(f"  IP lookup failed for {interface} — skipping ISP verification")
+            print(f"  All IP lookup URLs failed for {interface} — skipping ISP verification")
         return True
 
-    public_ip = public_ip.strip()
     if verbose:
         print(f"  Public IP for {interface}: {public_ip}")
 
@@ -599,7 +616,8 @@ def show_config(config, flags):
 
     # WHOIS
     if flags['whois']:
-        print(f"  WHOIS:    enabled (IP lookup: {config['ip_lookup_url']})")
+        urls = ', '.join(config['ip_lookup_urls'])
+        print(f"  WHOIS:    enabled (IP lookup: {urls})")
     else:
         print(f"  WHOIS:    disabled")
 
@@ -658,16 +676,17 @@ def test_whois(config):
 
     Uses the OS default route (no interface binding). Shows the public IP,
     the WHOIS org found, and whether it matches each interface's expected org.
+    Tries each configured IP_LOOKUP_URL in order until one succeeds.
     Returns True if both IP lookup and WHOIS succeeded.
     """
-    print(f"Fetching public IP via {config['ip_lookup_url']}...")
-    success, public_ip = _curl_request(config['ip_lookup_url'], interface=None, timeout=10)
-    if not success or not public_ip.strip():
-        print(f"  IP lookup: FAILED \u2014 {public_ip}", file=sys.stderr)
+    urls = config['ip_lookup_urls']
+    print(f"Fetching public IP via {', '.join(urls)}...")
+    public_ip, url_used = _lookup_public_ip(urls, interface=None, verbose=True)
+    if not public_ip:
+        print(f"  IP lookup: FAILED — all URLs exhausted", file=sys.stderr)
         return False
 
-    public_ip = public_ip.strip()
-    print(f"  Public IP: {public_ip}")
+    print(f"  Public IP: {public_ip} (via {url_used})")
 
     print(f"\nRunning WHOIS for {public_ip}...")
     actual_org = _run_whois(public_ip)
@@ -753,7 +772,7 @@ def main():
         if successful and flags['whois'] and info.expected_org:
             if verbose:
                 print(f"  Verifying ISP for {interface}...")
-            if not verify_isp(interface, info.expected_org, config['ip_lookup_url'], verbose):
+            if not verify_isp(interface, info.expected_org, config['ip_lookup_urls'], verbose):
                 successful = False
                 failures.append(f"ISP mismatch (expected {info.expected_org})")
 

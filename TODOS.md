@@ -2,10 +2,6 @@
 
 ## Backlog
 
-### Technical Debt
-
-- [ ] **[Debt]** Support comma-separated fallback list for `IP_LOOKUP_URL` (try each in order if one is down)
-
 ## Features — Done
 
 - [x] Add Telegram notifications as an optional alert channel (interface-bound via `curl --interface`)
@@ -23,3 +19,4 @@
 
 - [x] **[Debt]** Extract hardcoded config (interfaces, SMTP, websites) from `check_connectivity.py` into environment variables or a config file
 - [x] **[Debt]** Add `.env.example` once config is externalized
+- [x] **[Debt]** Support comma-separated fallback list for `IP_LOOKUP_URL` (try each in order if one is down)
