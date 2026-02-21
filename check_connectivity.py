@@ -8,6 +8,7 @@ import csv
 import subprocess
 import sys
 from collections import namedtuple
+from datetime import datetime
 from email.mime.text import MIMEText
 
 
@@ -395,12 +396,13 @@ def _format_alert_body(new_failures, restored_interfaces):
     return "\n\n".join(parts)
 
 
-def _send_email(body, config, interface=None, verbose=False):
+def _send_email(body, config, interface=None, verbose=False,
+                subject='Network Interface Status Update'):
     """Send an email alert, optionally bound to a specific network interface."""
     msg = MIMEText(body)
     msg['From'] = config['sender_email']
     msg['To'] = config['recipient_email']
-    msg['Subject'] = 'Network Interface Status Update'
+    msg['Subject'] = subject
 
     if config['use_ssl']:
         context = ssl.create_default_context()
@@ -432,7 +434,8 @@ def _send_email(body, config, interface=None, verbose=False):
         print("Email alert sent successfully.")
 
 
-def _send_telegram(body, config, interface=None, verbose=False):
+def _send_telegram(body, config, interface=None, verbose=False,
+                   subject='Network Interface Status Update'):
     """Send a Telegram alert via bot API, optionally bound to a network interface.
 
     Uses curl --interface for interface-bound routing, keeping the script
@@ -440,7 +443,7 @@ def _send_telegram(body, config, interface=None, verbose=False):
     """
     url = f"https://api.telegram.org/bot{config['telegram_bot_token']}/sendMessage"
     # Bold subject line in Telegram Markdown
-    text = f"*Network Interface Status Update*\n{body}"
+    text = f"*{subject}*\n{body}"
     data = {
         'chat_id': config['telegram_chat_id'],
         'text': text,
@@ -453,6 +456,7 @@ def _send_telegram(body, config, interface=None, verbose=False):
             print("Telegram alert sent successfully.")
         else:
             print(f"Failed to send Telegram alert: {response}")
+    return success, response
 
 
 def notify(new_failures, restored_interfaces, working_interface, config, flags, verbose=False):
@@ -513,6 +517,8 @@ examples:
   python check_connectivity.py --show-config   Print effective config
   python check_connectivity.py --no-whois      Disable WHOIS for this run
   python check_connectivity.py --telegram --no-email  Telegram only
+  python check_connectivity.py --test-alerts           Test notification channels
+  python check_connectivity.py --test-whois            Test WHOIS / ISP lookup
   python check_connectivity.py --env-file /etc/connectivity.env""")
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='Enable verbose logging')
@@ -542,6 +548,10 @@ examples:
                         help='Check connectivity but do not save state or send alerts')
     parser.add_argument('--show-config', action='store_true',
                         help='Print effective configuration and exit')
+    parser.add_argument('--test-alerts', action='store_true',
+                        help='Send a test message through enabled alert channels and exit')
+    parser.add_argument('--test-whois', action='store_true',
+                        help='Fetch public IP and run WHOIS lookup to test ISP verification')
 
     return parser
 
@@ -583,6 +593,94 @@ def show_config(config, flags):
         print(f"  WHOIS:    disabled")
 
 
+def test_alerts(config, flags):
+    """Send a test message through all enabled notification channels.
+
+    Prints results (success/failure) for each channel regardless of
+    verbose mode. Returns True if all enabled channels succeeded.
+    """
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    body = (
+        f"This is a test alert from check_connectivity.py.\n"
+        f"Timestamp: {timestamp}\n\n"
+        f"If you received this message, the notification channel is "
+        f"configured correctly."
+    )
+
+    if not flags['email'] and not flags['telegram']:
+        print("Error: No notification channels are enabled. "
+              "Configure email or Telegram env vars, or use "
+              "--email / --telegram to force-enable.", file=sys.stderr)
+        return False
+
+    all_ok = True
+
+    if flags['email']:
+        print(f"Testing email \u2192 {config['recipient_email']} "
+              f"via {config['smtp_server']}:{config['smtp_port']}...")
+        try:
+            _send_email(body, config, interface=None, verbose=False,
+                        subject='Test Alert \u2014 check_connectivity.py')
+            print("  Email: OK")
+        except Exception as e:
+            print(f"  Email: FAILED \u2014 {e}", file=sys.stderr)
+            all_ok = False
+
+    if flags['telegram']:
+        token = config['telegram_bot_token'] or ''
+        redacted = f"{token[:4]}...{token[-4:]}" if len(token) > 8 else '****'
+        print(f"Testing Telegram \u2192 chat {config['telegram_chat_id']} "
+              f"(token: {redacted})...")
+        success, response = _send_telegram(body, config, interface=None, verbose=False,
+                                           subject='Test Alert')
+        if success:
+            print("  Telegram: OK")
+        else:
+            print(f"  Telegram: FAILED \u2014 {response}", file=sys.stderr)
+            all_ok = False
+
+    return all_ok
+
+
+def test_whois(config):
+    """Fetch public IP and run WHOIS to test ISP verification.
+
+    Uses the OS default route (no interface binding). Shows the public IP,
+    the WHOIS org found, and whether it matches each interface's expected org.
+    Returns True if both IP lookup and WHOIS succeeded.
+    """
+    print(f"Fetching public IP via {config['ip_lookup_url']}...")
+    success, public_ip = _curl_request(config['ip_lookup_url'], interface=None, timeout=10)
+    if not success or not public_ip.strip():
+        print(f"  IP lookup: FAILED \u2014 {public_ip}", file=sys.stderr)
+        return False
+
+    public_ip = public_ip.strip()
+    print(f"  Public IP: {public_ip}")
+
+    print(f"\nRunning WHOIS for {public_ip}...")
+    actual_org = _run_whois(public_ip)
+    if actual_org is None:
+        print("  WHOIS: FAILED \u2014 could not determine organization", file=sys.stderr)
+        return False
+
+    print(f"  WHOIS org: {actual_org}")
+
+    # Show match status for each interface with an expected org
+    has_expected = any(info.expected_org for info in config['interfaces'].values())
+    if has_expected:
+        print("\nInterface matches:")
+        for name, info in config['interfaces'].items():
+            if info.expected_org:
+                match = info.expected_org.upper() in actual_org.upper()
+                status = "matches" if match else "MISMATCH"
+                print(f"  {name} ({info.label}): expected \"{info.expected_org}\" \u2014 {status}")
+            else:
+                print(f"  {name} ({info.label}): no expected org configured")
+
+    return True
+
+
 # ============================================================
 # Main
 # ============================================================
@@ -602,6 +700,14 @@ def main():
     if args.show_config:
         show_config(config, flags)
         return
+
+    if args.test_alerts:
+        success = test_alerts(config, flags)
+        sys.exit(0 if success else 1)
+
+    if args.test_whois:
+        success = test_whois(config)
+        sys.exit(0 if success else 1)
 
     interfaces = config['interfaces']
     websites = config['websites']

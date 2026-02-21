@@ -18,6 +18,8 @@ python check_connectivity.py -v         # Verbose output
 python check_connectivity.py --show-config  # Print effective config and exit
 python check_connectivity.py --dry-run -v   # Check without saving state or alerting
 python check_connectivity.py --no-whois -v  # Disable WHOIS for this run
+python check_connectivity.py --test-alerts  # Test notification channels and exit
+python check_connectivity.py --test-whois   # Test WHOIS / ISP lookup and exit
 ```
 
 **How it works:**

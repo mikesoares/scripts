@@ -13,6 +13,8 @@
 - [x] Add CLI flags for per-invocation feature overrides (`--email`/`--no-email`, `--telegram`/`--no-telegram`, `--whois`/`--no-whois`)
 - [x] Add `--dry-run` mode for testing without side effects
 - [x] Add `--show-config` to print effective configuration
+- [x] Add `--test-alerts` to send test messages through email/Telegram
+- [x] Add `--test-whois` to test WHOIS/ISP lookup and show org name
 - [x] Add `--help` with feature descriptions, config instructions, and usage examples
 - [x] Add built-in `.env` file loading (`load_dotenv()`) with `--env-file` flag
 - [x] Restructure code into clear sections (Configuration, State, Connectivity, SMTP, Notifications, CLI, Main)
