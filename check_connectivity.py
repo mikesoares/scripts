@@ -451,6 +451,18 @@ def _send_telegram(body, config, interface=None, verbose=False,
     }
 
     success, response = _curl_request(url, method='POST', data=data, interface=interface)
+
+    # Validate Telegram API response — curl exits 0 even on API errors
+    # (e.g., bad token, invalid chat_id, Markdown parse failure)
+    if success:
+        try:
+            result = json.loads(response)
+            if not result.get('ok'):
+                success = False
+                response = result.get('description', response)
+        except (json.JSONDecodeError, TypeError):
+            pass  # Non-JSON response — trust curl's exit code
+
     if verbose:
         if success:
             print("Telegram alert sent successfully.")
