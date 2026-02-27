@@ -9,7 +9,6 @@ Thumbs.db
 
 # Claude Code
 .claude/
-CLAUDE.md
 
 # User-provided staging files
 tmp/
