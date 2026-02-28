@@ -2,6 +2,8 @@
 
 ## Backlog
 
+- [ ] **[Docs]** `optimize_images.py` is undocumented in both README.md and CLAUDE.md (drift violation — should be documented or relocated to `qsda/`)
+
 ## Features — Done
 
 - [x] Add Telegram notifications as an optional alert channel (interface-bound via `curl --interface`)

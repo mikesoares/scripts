@@ -7,8 +7,10 @@ Thumbs.db
 .env.local
 .env*.local
 
-# Claude Code
-.claude/
+# Claude Code (keep .claude/ ignored but whitelist rules/ and skills/)
+.claude/*
+!.claude/rules/
+!.claude/skills/
 
 # User-provided staging files
 tmp/
