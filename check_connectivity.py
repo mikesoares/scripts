@@ -7,6 +7,7 @@ import os
 import csv
 import subprocess
 import sys
+import time
 from collections import namedtuple
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -112,6 +113,10 @@ def load_config():
 
     state_file = os.environ.get('STATE_FILE', 'interface_states.csv')
 
+    # Retry settings for transient failures
+    conn_retries = int(os.environ.get('CONN_RETRIES', '1'))
+    conn_retry_delay = int(os.environ.get('CONN_RETRY_DELAY', '5'))
+
     return {
         'interfaces': interfaces,
         'websites': websites,
@@ -136,6 +141,9 @@ def load_config():
         'ip_lookup_urls': ip_lookup_urls,
         # State
         'state_file': state_file,
+        # Retry
+        'conn_retries': conn_retries,
+        'conn_retry_delay': conn_retry_delay,
     }
 
 
@@ -593,6 +601,10 @@ def show_config(config, flags):
 
     print(f"\nWebsites: {', '.join(config['websites'])}")
     print(f"State file: {config['state_file']}")
+    if config['conn_retries'] > 0:
+        print(f"Retries: {config['conn_retries']} (delay: {config['conn_retry_delay']}s)")
+    else:
+        print(f"Retries: disabled")
 
     print("\nFeatures:")
 
@@ -767,6 +779,20 @@ def main():
             print(f"Testing {info.label} ({interface})...")
 
         successful, failures = check_connectivity(interface, websites, verbose)
+
+        # Retry on failure — transient blips (latency spikes, brief route
+        # flaps) can cause false positives with a single check. Retrying
+        # after a short delay filters these out while still catching real
+        # outages.
+        if not successful and config['conn_retries'] > 0:
+            for attempt in range(1, config['conn_retries'] + 1):
+                if verbose:
+                    print(f"  Retry {attempt}/{config['conn_retries']} "
+                          f"after {config['conn_retry_delay']}s delay...")
+                time.sleep(config['conn_retry_delay'])
+                successful, failures = check_connectivity(interface, websites, verbose)
+                if successful:
+                    break
 
         # Optional WHOIS/ISP verification — only if connectivity passed
         if successful and flags['whois'] and info.expected_org:

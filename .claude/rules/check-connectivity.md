@@ -22,6 +22,12 @@ The script is organized into clear sections, top-to-bottom:
 
 DNS resolution uses the system default route, not the bound interface — intentional, since we only care whether the interface can carry TCP traffic. `SO_BINDTODEVICE` binds the TCP socket to the specified interface for the HTTPS connection.
 
+## Retry on Failure
+
+When `check_connectivity()` fails for an interface, the main loop retries up to `CONN_RETRIES` times (default 1) with a `CONN_RETRY_DELAY`-second pause (default 5) between attempts. This filters out transient blips — latency spikes, brief route flaps, momentary congestion — without missing real outages. The retry happens before WHOIS verification, so only the connectivity check itself is retried. If any retry succeeds, the interface is treated as up.
+
+**Timing budget:** With defaults (1 retry, 5s delay, 5s socket timeout), a failed interface adds at most 10 seconds per run. With `CONN_RETRIES=2`, worst case is ~20 seconds — still well within a 5-minute cron interval.
+
 ## Notification Channels
 
 Both channels are optional and independently configurable. The `notify()` dispatcher calls each enabled channel, routing through the working interface when available.

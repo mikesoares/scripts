@@ -76,6 +76,8 @@ On the first run (or if the state file is corrupted), state is stored without se
 | `TELEGRAM_CHAT_ID` | For Telegram | — | Telegram chat ID for alerts |
 | `WHOIS_ENABLED` | No | `false` | Enable ISP verification via WHOIS |
 | `IP_LOOKUP_URL` | No | `https://api.ipify.org` | Comma-separated URLs that return public IP as plain text. Tried in order; falls back to the next if one fails. |
+| `CONN_RETRIES` | No | `1` | Number of retries on connectivity failure before marking an interface down. Set to `0` to disable. |
+| `CONN_RETRY_DELAY` | No | `5` | Seconds to wait between retries. |
 | `STATE_FILE` | No | `interface_states.csv` | Absolute path to the state persistence file. Relative paths resolve from the working directory, not the script's directory — use an absolute path to avoid surprises with cron. |
 
 Each alert channel (email, Telegram) is independently optional. If its required env vars are missing, the channel is disabled but connectivity checks still run and state is saved. `--dry-run` skips state saving and alert sending.
