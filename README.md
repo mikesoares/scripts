@@ -6,7 +6,7 @@ Collection of useful standalone scripts. Each script is self-contained with its 
 
 | Layer | Technology |
 |-------|-----------|
-| Languages | Python 3 (varies per script) |
+| Languages | Python 3, Bash |
 | License | GPL-3.0 |
 
 ## Scripts
@@ -100,14 +100,20 @@ Per-invocation overrides work in cron too:
 */5 * * * * /usr/bin/python3 /path/to/check_connectivity.py --no-whois
 ```
 
+### photo-organization/
+
+Pipeline of four scripts for reorganizing a photo archive — fixing timestamps, normalizing directory names, scanning, and applying date-based renames. See [photo-organization/README.md](photo-organization/README.md) for full documentation and usage.
+
 ## Project Structure
 
 ```
 scripts/
-├── check_connectivity.py   # Network interface connectivity monitor
-├── .env.example            # Environment variable template
-├── interface_states.csv     # Runtime — last-known interface states (auto-created, gitignored)
-├── LICENSE                  # GPL-3.0
+├── check_connectivity.py      # Network interface connectivity monitor
+├── optimize_images.py         # Image optimization utility
+├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)
+├── .env.example               # Environment variable template for check_connectivity.py
+├── interface_states.csv       # Runtime — last-known interface states (auto-created, gitignored)
+├── LICENSE                    # GPL-3.0
 ├── README.md
 └── TODOS.md
 ```

@@ -32,3 +32,7 @@ venv/
 
 # Runtime artifacts
 interface_states.csv
+photo-organization/photo-scan-*.db
+photo-organization/photo-scan-*.log
+photo-organization/photo-rename-*.log
+photo-organization/photo-organizer-*.log

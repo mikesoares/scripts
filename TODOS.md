@@ -3,6 +3,8 @@
 ## Backlog
 
 - [ ] **[Docs]** `optimize_images.py` is undocumented in both README.md and CLAUDE.md (drift violation — should be documented or relocated to `qsda/`)
+- [ ] Phase 3: write `photo-flatten.py` — flatten deeply nested directories (depth >= 3) to 1–2 levels based on DB analysis
+- [x] Phase 2: write `photo-rename-dirs.py` — read `photo-db-scan.py` DB output and propose/execute directory renames (add full YYYY-MM-DD prefix, normalize partial/missing dirs)
 
 ## Features — Done
 
