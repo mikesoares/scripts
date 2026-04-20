@@ -100,6 +100,10 @@ Per-invocation overrides work in cron too:
 */5 * * * * /usr/bin/python3 /path/to/check_connectivity.py --no-whois
 ```
 
+### drive-test/
+
+Three-script pipeline for validating hard drives: destructive badblocks test (phase 1), ZFS + f3 + SMART long test (phase 2), and a completion webhook notifier. See [drive-test/README.md](drive-test/README.md) for full documentation and usage.
+
 ### photo-organization/
 
 Pipeline of four scripts for reorganizing a photo archive — fixing timestamps, normalizing directory names, scanning, and applying date-based renames. See [photo-organization/README.md](photo-organization/README.md) for full documentation and usage.
@@ -110,6 +114,7 @@ Pipeline of four scripts for reorganizing a photo archive — fixing timestamps,
 scripts/
 ├── check_connectivity.py      # Network interface connectivity monitor
 ├── optimize_images.py         # Image optimization utility
+├── drive-test/                # Hard drive validation pipeline (3 scripts)
 ├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)
 ├── .env.example               # Environment variable template for check_connectivity.py
 ├── interface_states.csv       # Runtime — last-known interface states (auto-created, gitignored)
