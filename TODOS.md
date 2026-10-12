@@ -2,6 +2,9 @@
 
 ## Backlog
 
+- [ ] **[Debt]** `npm-add-host/npm_add_host.py` has no automated tests; add unit tests for `parse_aliases`, `normalize_fqdn`, `find_access_list`, and the delete guards against a stubbed `NpmClient`
+- [ ] **[Debt]** `npm-add-host`: support an `https://` `NPM_URL` with a custom CA bundle (it currently talks to the admin API over plain `http://` on a trusted LAN)
+- [ ] **[Debt]** `npm-add-host`: if NPM ever unpins `certbot-dns-ispconfig` (plugin 0.3.1 fixes the empty `stamp` bug), add an optional DNS-01 wildcard mode
 - [ ] **[Docs]** `optimize_images.py` is undocumented in both README.md and CLAUDE.md (drift violation — should be documented or relocated to `qsda/`)
 - [ ] Phase 3: write `photo-flatten.py` — flatten deeply nested directories (depth >= 3) to 1–2 levels based on DB analysis
 - [x] Phase 2: write `photo-rename-dirs.py` — read `photo-db-scan.py` DB output and propose/execute directory renames (add full YYYY-MM-DD prefix, normalize partial/missing dirs)

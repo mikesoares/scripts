@@ -104,6 +104,10 @@ Per-invocation overrides work in cron too:
 
 Three-script pipeline for validating hard drives: destructive badblocks test (phase 1), ZFS + f3 + SMART long test (phase 2), and a completion webhook notifier. See [drive-test/README.md](drive-test/README.md) for full documentation and usage.
 
+### npm-add-host/
+
+Creates or deletes Nginx Proxy Manager proxy hosts (per-host Let's Encrypt cert, SSL forced, HSTS, HTTP/2, websockets) from the command line via NPM's REST API. Fails closed: refuses to create a host with no access list unless `--public` is passed. See [npm-add-host/README.md](npm-add-host/README.md) for configuration and usage.
+
 ### photo-organization/
 
 Pipeline of four scripts for reorganizing a photo archive — fixing timestamps, normalizing directory names, scanning, and applying date-based renames. See [photo-organization/README.md](photo-organization/README.md) for full documentation and usage.
@@ -115,6 +119,7 @@ scripts/
 ├── check_connectivity.py      # Network interface connectivity monitor
 ├── optimize_images.py         # Image optimization utility
 ├── drive-test/                # Hard drive validation pipeline (3 scripts)
+├── npm-add-host/              # Add/delete NPM proxy hosts + Let's Encrypt certs via the API
 ├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)
 ├── .env.example               # Environment variable template for check_connectivity.py
 ├── interface_states.csv       # Runtime — last-known interface states (auto-created, gitignored)

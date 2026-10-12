@@ -7,6 +7,7 @@ Script-specific architecture details are in `.claude/rules/`, loaded automatical
 | Rule File | Glob | Content |
 |-----------|------|---------|
 | `check-connectivity.md` | `check_connectivity*` | Code structure, connectivity checks, notifications, WHOIS/ISP, CSV resilience, config design, runtime artifacts, constraints |
+| `npm-add-host.md` | `npm-add-host/**` | Code structure, why per-host HTTP-01 certs, cert-first ordering, managed-host marker, access-list aliases, delete guards, gotchas |
 
 ## Commit Workflow Overrides
 
