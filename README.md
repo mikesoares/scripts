@@ -102,7 +102,7 @@ Per-invocation overrides work in cron too:
 
 ### drive-test/
 
-Four-script pipeline for validating hard drives: SMART pre-check and destructive badblocks test (phase 1), ZFS + f3 + SMART long test with a pass/fail verdict (phase 2), an unattended single-pass badblocks queue, and a completion webhook notifier. See [drive-test/README.md](drive-test/README.md) for full documentation and usage.
+Five-script pipeline for validating hard drives: SMART pre-check and destructive badblocks test (phase 1), ZFS + f3 + SMART long test with a pass/fail verdict (phase 2), an unattended badblocks queue (full four-pattern run, or single-pass via `BB_PATTERN`), a waiter that starts phase 2 only after badblocks passes, and a completion webhook notifier. See [drive-test/README.md](drive-test/README.md) for full documentation and usage.
 
 ### npm-add-host/
 
@@ -118,7 +118,7 @@ Pipeline of four scripts for reorganizing a photo archive — fixing timestamps,
 scripts/
 ├── check_connectivity.py      # Network interface connectivity monitor
 ├── optimize_images.py         # Image optimization utility
-├── drive-test/                # Hard drive validation pipeline (4 scripts)
+├── drive-test/                # Hard drive validation pipeline (5 scripts)
 ├── npm-add-host/              # Add/delete NPM proxy hosts + Let's Encrypt certs via the API
 ├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)
 ├── .env.example               # Environment variable template for check_connectivity.py

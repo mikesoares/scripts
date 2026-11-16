@@ -1,6 +1,6 @@
 # drive-test
 
-Four-script pipeline for validating used/new hard drives: SMART pre-check and badblocks destructive write test (phase 1), ZFS + f3 + SMART long test with a pass/fail verdict (phase 2), an unattended single-pass badblocks queue, and a completion webhook notifier.
+Five-script pipeline for validating used/new hard drives: SMART pre-check and badblocks destructive write test (phase 1), ZFS + f3 + SMART long test with a pass/fail verdict (phase 2), an unattended badblocks queue (full four-pattern run, or single-pass via `BB_PATTERN`), and a completion webhook notifier.
 
 ## Scripts
 
@@ -46,7 +46,7 @@ Runs the full phase 2 validation sequence on one drive: ZFS pool creation, f3 wr
 **Usage:**
 
 ```bash
-./drive-test-phase2.sh <drive_letter>
+./drive-test-phase2.sh <serial|drive_letter>
 ```
 
 `<drive_letter>` is a single letter, e.g. `g` for `/dev/sdg`.
@@ -54,7 +54,8 @@ Runs the full phase 2 validation sequence on one drive: ZFS pool creation, f3 wr
 **Example:**
 
 ```bash
-./drive-test-phase2.sh g
+./drive-test-phase2.sh WD-WCAZA6147923   # by serial (preferred)
+./drive-test-phase2.sh g                 # by letter
 ```
 
 **Steps:**
@@ -68,13 +69,13 @@ Runs the full phase 2 validation sequence on one drive: ZFS pool creation, f3 wr
 6. `smartctl -t long` — poll every 5 minutes until complete, then print attributes
 7. Judge: fail on SMART 5/197/198 raw value ≠ 0 (before or after), f3read lost/corrupted/changed/overwritten sectors, any ZFS READ/WRITE/CKSUM count or data error, or a SMART long test that didn't finish clean. Checksum-only errors with a clean badblocks/f3 can be a bad cable or HBA — re-seat and retest before binning the drive.
 
-**Log:** `/tmp/sd<letter>-phase2.log`
+**Log:** `/tmp/<serial>-phase2.log` (by serial) or `/tmp/sd<letter>-phase2.log` (by letter). With a serial the script finds the drive through `/dev/disk/by-id/ata-*_<serial>` and builds the pool on that stable path; it refuses a drive with a mounted filesystem.
 
 ---
 
 ### queue-badblocks.sh
 
-Waits for one drive's SMART long self-test to finish and pass, then runs a single destructive badblocks write+read pass (`-t 0xaa`) on it. Meant for unattended overnight runs: start one detached screen session per drive and they all start themselves as each drive's self-test completes. **Destroys all data on the drive once the gate passes.**
+Waits for one drive's SMART long self-test to finish and pass, then runs the full destructive badblocks run (default four patterns 0xaa, 0x55, 0xff, 0x00, each a write pass plus a read-back pass; days on a multi-TB drive) on it. Set `BB_PATTERN=0xaa` for a single-pattern pass instead. Meant for unattended overnight runs: start one detached screen session per drive and they all start themselves as each drive's self-test completes. **Destroys all data on the drive once the gate passes.**
 
 **Requirements:** `screen`, `badblocks` (`e2fsprogs`), `smartmontools`, passwordless `sudo`
 
@@ -83,15 +84,33 @@ Waits for one drive's SMART long self-test to finish and pass, then runs a singl
 ```bash
 ./queue-badblocks.sh <serial>
 screen -dmS bb-<serial> ./queue-badblocks.sh <serial>
+BB_PATTERN=0xaa screen -dmS bb-<serial> ./queue-badblocks.sh <serial>   # single pattern, overnight
 ```
 
 `<serial>` is the drive's serial number as shown by `smartctl -i`. The script finds the drive through `/dev/disk/by-id/ata-*_<serial>`, so `/dev/sdX` letters changing (controller or cable swap) cannot point it at the wrong disk. It refuses any drive with a mounted filesystem.
 
 **Gate (all must hold, else it logs `SKIPPED` and exits 2):** newest self-test is an Extended one that completed without error, SMART health is PASSED, and SMART attributes 5/197/198 are all 0.
 
-**Result:** the log ends with `BADBLOCKS PASSED` (exit code 0, no bad blocks listed, SMART 5/197/198 still 0) or `BADBLOCKS FAILED`. One pattern instead of the default four keeps a 3-4 TB drive within roughly 10-16 hours.
+**Result:** the log ends with `BADBLOCKS PASSED` (exit code 0, no bad blocks listed, SMART 5/197/198 still 0) or `BADBLOCKS FAILED`. A single pattern (`BB_PATTERN=0xaa`) keeps a 3-4 TB drive within roughly 10-16 hours; the full run is about four times that.
 
 **Log:** `~/drive-test-logs/<serial>-badblocks.log`
+
+---
+
+### queue-phase2.sh
+
+Waits for one drive's `queue-badblocks.sh` run to reach a verdict, then runs `drive-test-phase2.sh` on it only if badblocks **PASSED**. A `BADBLOCKS FAILED`, `SKIPPED` or `ABORT` line makes it log `SKIPPED phase 2` and exit 2. Start one detached screen session per drive next to its badblocks session. **Destroys all data on the drive once phase 2 starts.**
+
+**Usage:**
+
+```bash
+./queue-phase2.sh <serial>
+screen -dmS p2-<serial> ./queue-phase2.sh <serial>
+```
+
+It polls the badblocks log every 5 minutes, so a stopped or restarted badblocks run just keeps it waiting. When phase 2 ends it copies `/tmp/<serial>-phase2.log` to `~/drive-test-logs/<serial>-phase2.log` and logs the `PHASE 2 COMPLETE`/`FAILED` verdict. Environment overrides for testing: `LOGDIR`, `PHASE2_SCRIPT`, `POLL_SECONDS`.
+
+**Log:** `~/drive-test-logs/<serial>-pipeline.log`
 
 ---
 
@@ -111,7 +130,7 @@ Polls phase 2 logs for a set of drives and hits a webhook URL when every drive h
 ./check-complete.sh https://example.com/notify
 ```
 
-Reads `/tmp/sd<letter>-phase2.log` for each drive in `DRIVES` (default `a b c d`; override with `DRIVES="e f g" ./check-complete.sh <url>`) and looks for `PHASE 2 COMPLETE` or `PHASE 2 FAILED`. The webhook fires on completion regardless of pass/fail; the pass/fail counts are in the check log. When all drives are done, it hits the webhook and writes `/tmp/phase2-notified.sentinel` to prevent duplicate notifications.
+Reads the phase 2 log for each drive in `DRIVES` (default letters `a b c d`; override with `DRIVES="e f g"` or with serials, `DRIVES="<serial> <serial>"`, then `./check-complete.sh <url>`) and looks for `PHASE 2 COMPLETE` or `PHASE 2 FAILED`. The webhook fires on completion regardless of pass/fail; the pass/fail counts are in the check log. When all drives are done, it hits the webhook and writes `/tmp/phase2-notified.sentinel` to prevent duplicate notifications.
 
 **Logs:** `/tmp/check-complete.log`
 
@@ -120,8 +139,9 @@ Reads `/tmp/sd<letter>-phase2.log` for each drive in `DRIVES` (default `a b c d`
 | File | Description |
 |------|-------------|
 | `/tmp/<drive>-precheck.log` | Identity + SMART attributes from a `precheck` run |
+| `~/drive-test-logs/<serial>-pipeline.log`, `~/drive-test-logs/<serial>-phase2.log` | Waiter status and the copied phase 2 log from `queue-phase2.sh` |
 | `~/drive-test-logs/<serial>-badblocks.log` | Queue and badblocks output from `queue-badblocks.sh`; ends in `BADBLOCKS PASSED`/`FAILED`/`SKIPPED` |
 | `/tmp/<drive>-badblocks.log` | Badblocks output for a phase 1 run |
-| `/tmp/sd<letter>-phase2.log` | Full phase 2 output for one drive |
+| `/tmp/sd<letter>-phase2.log`, `/tmp/<serial>-phase2.log` | Full phase 2 output for one drive |
 | `/tmp/check-complete.log` | Completion check log |
 | `/tmp/phase2-notified.sentinel` | Written after webhook fires; prevents re-notification |

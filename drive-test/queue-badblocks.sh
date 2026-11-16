@@ -2,7 +2,7 @@
 # Wait for one drive's SMART long self-test to finish and pass, then run a single
 # destructive badblocks write+read pass (pattern 0xaa) on it. Meant to be started
 # in a detached screen session so several drives can queue at once.
-# Usage: ./queue-badblocks.sh <serial>
+# Usage: [BB_PATTERN=0xaa] ./queue-badblocks.sh <serial>
 # Example: screen -dmS bb-Z1F1NCRL ./queue-badblocks.sh Z1F1NCRL
 #
 # WARNING: destroys all data on the drive once the gate passes.
@@ -10,8 +10,10 @@
 # Why serial + /dev/disk/by-id: /dev/sdX letters can change after a controller or
 # cable swap; the by-id path follows the physical drive, so a logged result always
 # belongs to the right disk.
-# Why one pattern (-t 0xaa): the default 4-pattern run takes days; one pass still
-# writes and reads every sector and fits in an overnight window.
+# Pattern: by default badblocks' full 4-pattern run (0xaa, 0x55, 0xff, 0x00; each a
+# write pass plus a read-back pass), the forum burn-in methodology; it takes days on a
+# multi-TB drive. Set BB_PATTERN=0xaa for a single-pattern pass (writes and reads every
+# sector once; fits in an overnight window).
 
 SERIAL=${1:-}
 if [ -z "$SERIAL" ]; then
@@ -58,8 +60,10 @@ if [ -n "$BAD" ]; then
   log "SKIPPED: bad-sector attributes non-zero: $BAD"; exit 2
 fi
 
-log "GATE PASSED: starting badblocks on $DEV ($SERIAL)"
-sudo badblocks -b 4096 -c 65535 -wsv -t 0xaa "$ID" 2>&1 | tee -a "$LOG"
+log "GATE PASSED: starting badblocks on $DEV ($SERIAL), patterns: ${BB_PATTERN:-all four}"
+PATTERN_ARGS=()
+[ -n "${BB_PATTERN:-}" ] && PATTERN_ARGS=(-t "$BB_PATTERN")
+sudo badblocks -b 4096 -c 65535 -wsv "${PATTERN_ARGS[@]}" "$ID" 2>&1 | tee -a "$LOG"
 RC=${PIPESTATUS[0]}
 
 # badblocks prints its bad-block count as it goes; any listed block (a bare number

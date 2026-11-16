@@ -1,6 +1,10 @@
 #!/bin/bash
 # Run ZFS pool test + f3 + scrub + final SMART for one drive, then judge the results.
-# Usage: ./drive-test-phase2.sh <drive_letter>  (e.g., a for /dev/sda)
+# Usage: ./drive-test-phase2.sh <serial|drive_letter>
+#   serial (preferred): e.g. WD-WCAZA6147923; the drive is found through
+#     /dev/disk/by-id/ata-*_<serial>, so /dev/sdX letters moving after a controller
+#     or cable swap cannot point the test at the wrong disk.
+#   drive_letter: a single letter, e.g. a for /dev/sda (legacy).
 #
 # Ends with exactly one verdict line in the log:
 #   "PHASE 2 COMPLETE" - every check was clean
@@ -10,13 +14,30 @@
 
 L=${1:-}
 if [ -z "$L" ]; then
-  echo "Usage: $0 <drive_letter>"
+  echo "Usage: $0 <serial|drive_letter>"
   exit 1
 fi
-DEV=/dev/sd$L
-POOL=TEST${L^^}
+if [[ "$L" =~ ^[a-z]$ ]]; then
+  DEV=/dev/sd$L
+  POOL=TEST${L^^}
+  LOG=/tmp/sd$L-phase2.log
+else
+  ID=$(ls /dev/disk/by-id/ata-*_"$L" 2>/dev/null | grep -v -- '-part' | head -1)
+  if [ -z "$ID" ]; then
+    echo "ABORT: no drive with serial $L under /dev/disk/by-id"
+    exit 1
+  fi
+  DEV=$(readlink -f "$ID")
+  # ZFS pool names allow letters, digits, '_', '-', '.', ':' but must start with a letter.
+  POOL=TEST_$(echo "$L" | tr -c 'A-Za-z0-9\n' '_')
+  LOG=/tmp/$L-phase2.log
+fi
+# Refuse a drive with a mounted filesystem (e.g. the boot disk).
+if [ -n "$(lsblk -no MOUNTPOINTS "$DEV" | tr -d '[:space:]')" ]; then
+  echo "ABORT: $DEV has a mounted filesystem"
+  exit 1
+fi
 MNT=/$POOL
-LOG=/tmp/sd$L-phase2.log
 FAILS=()
 
 exec > >(tee -a "$LOG") 2>&1
@@ -45,7 +66,7 @@ BAD=$(smart_bad_attrs)
 echo "[$(date)] Step 3: Creating ZFS pool $POOL on $DEV"
 # Compression must stay on: the original methodology found checksum errors
 # that only appeared with compress=lz4.
-if sudo zpool create -f -o ashift=12 -O logbias=throughput -O compress=lz4 -O dedup=off -O atime=off -O xattr=sa "$POOL" "$DEV" \
+if sudo zpool create -f -o ashift=12 -O logbias=throughput -O compress=lz4 -O dedup=off -O atime=off -O xattr=sa "$POOL" "${ID:-$DEV}" \
   && sudo zpool export "$POOL" \
   && sudo zpool import -d /dev/disk/by-id "$POOL"; then
   sudo chmod -R ugo+rw "$MNT"

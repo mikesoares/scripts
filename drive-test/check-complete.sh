@@ -1,7 +1,7 @@
 #!/bin/bash
 # Poll phase 2 logs and hit a webhook once every drive has a verdict.
 # Usage: ./check-complete.sh <webhook-url>
-# Drives checked default to sda-sdd; override with DRIVES="e f g" ./check-complete.sh <url>
+# Drives checked default to sda-sdd; override with DRIVES="e f g" (letters) or DRIVES="<serial> <serial>" ./check-complete.sh <url>
 # A drive is "done" when its log has PHASE 2 COMPLETE (clean) or PHASE 2 FAILED.
 URL=${1:-}
 if [ -z "$URL" ]; then
@@ -18,9 +18,11 @@ LOG=/tmp/check-complete.log
 TOTAL=0 PASSED=0 FAILED=0
 for L in $DRIVES; do
   TOTAL=$((TOTAL+1))
-  if grep -q 'PHASE 2 COMPLETE' /tmp/sd$L-phase2.log 2>/dev/null; then
+  # A single letter means /dev/sdX (legacy log name); anything else is a serial.
+  if [[ "$L" =~ ^[a-z]$ ]]; then PLOG=/tmp/sd$L-phase2.log; else PLOG=/tmp/$L-phase2.log; fi
+  if grep -q 'PHASE 2 COMPLETE' $PLOG 2>/dev/null; then
     PASSED=$((PASSED+1))
-  elif grep -q 'PHASE 2 FAILED' /tmp/sd$L-phase2.log 2>/dev/null; then
+  elif grep -q 'PHASE 2 FAILED' $PLOG 2>/dev/null; then
     FAILED=$((FAILED+1))
   fi
 done
