@@ -108,6 +108,10 @@ Five-script pipeline for validating hard drives: SMART pre-check and destructive
 
 Creates or deletes Nginx Proxy Manager proxy hosts (per-host Let's Encrypt cert, SSL forced, HSTS, HTTP/2, websockets) from the command line via NPM's REST API. Fails closed: refuses to create a host with no access list unless `--public` is passed. See [npm-add-host/README.md](npm-add-host/README.md) for configuration and usage.
 
+### kuma-maintenance/
+
+Puts Uptime Kuma monitors into maintenance and back out from the command line, selecting them by tag across one or more Kuma instances, so planned reboots and updates don't page anyone. See [kuma-maintenance/README.md](kuma-maintenance/README.md) for configuration and usage.
+
 ### photo-organization/
 
 Pipeline of four scripts for reorganizing a photo archive — fixing timestamps, normalizing directory names, scanning, and applying date-based renames. See [photo-organization/README.md](photo-organization/README.md) for full documentation and usage.
@@ -119,6 +123,7 @@ scripts/
 ├── check_connectivity.py      # Network interface connectivity monitor
 ├── optimize_images.py         # Image optimization utility
 ├── drive-test/                # Hard drive validation pipeline (5 scripts)
+├── kuma-maintenance/          # Put Uptime Kuma monitors into/out of maintenance by tag
 ├── npm-add-host/              # Add/delete NPM proxy hosts + Let's Encrypt certs via the API
 ├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)
 ├── .env.example               # Environment variable template for check_connectivity.py
