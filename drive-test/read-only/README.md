@@ -88,6 +88,14 @@ Environment overrides: `LOGDIR` (default `~/drive-test-logs`), `SUDO` (default `
 
 Runs every script against stub `smartctl`, `lsblk`, `badblocks`, etc. in `tests/stubs/` and a temporary directory (real `rsync` between two temp directories). No real drive, no root. Also greps the suite for write-capable commands.
 
+```bash
+sudo ./tests/prove-readonly.sh
+```
+
+Opt-in proof that the suite writes nothing, with the real tools: builds a 2 GiB sparse image (NTFS + ext4), attaches it as a loop device, runs the suite, and checks the image SHA-256 and the kernel's sectors-written counter are unchanged. It then repeats the run with the device locked by `blockdev --setro`, where any write would be refused. A control write first proves both detectors can see a change. Needs root, `ntfs-3g`, `sfdisk`, `rsync`, `e2fsprogs`; touches no real drive. The overall verdict there is `WARN` because a loop device has no SMART.
+
+To check your own drives the same way, lock them first (`sudo blockdev --setro /dev/sdX`) and compare `/sys/block/sdX/stat` (field 7, sectors written) before and after a run.
+
 ## Runtime files
 
 | File | Description |
