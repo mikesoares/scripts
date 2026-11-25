@@ -88,6 +88,29 @@ reset; fsenv ntfs "$SRC ro"; rm -rf "$DST"; mkdir "$DST"; expect "ro-run with de
 reset; setv A197 2; expect "ro-run on suspect drive is WARN or FAIL, never PASS" 2 "$RO/ro-run.sh" $S --no-surface
 reset; printf '99\n' > "$STUB/bad"; expect "ro-run with bad block fails" 1 "$RO/ro-run.sh" $S
 
+# --- queue ---
+reset; expect "queue all steps pass" 0 "$RO/ro-queue.sh" $S baseline short long surface compare
+tail -1 "$LOG" | grep -q "RO-CHECK PASSED $S" && PASS=$((PASS+1)) && echo "ok   queue verdict line is last" || { FAIL=$((FAIL+1)); echo "FAIL queue verdict"; }
+reset; setv selftest "# 1  Extended offline    Completed: read failure       90%       100         12345"
+expect "queue stops when a step fails" 1 "$RO/ro-queue.sh" $S baseline short long surface compare
+if grep -q "queue: --- surface ---" "$LOG"; then FAIL=$((FAIL+1)); echo "FAIL queue ran a step after a failure"; else PASS=$((PASS+1)); echo "ok   queue ran nothing after the failed step"; fi
+grep -q "RO-CHECK FAILED $S" "$LOG" && PASS=$((PASS+1)) && echo "ok   queue logs a FAILED verdict" || { FAIL=$((FAIL+1)); echo "FAIL queue FAILED verdict"; }
+reset; setv A197 3; expect "queue continues on WARN and ends WARN" 2 "$RO/ro-queue.sh" $S baseline short
+grep -q "queue: --- short ---" "$LOG" && PASS=$((PASS+1)) && echo "ok   queue continued past the WARN step" || { FAIL=$((FAIL+1)); echo "FAIL queue stopped on WARN"; }
+reset; touch "$STUB/nosmart"; expect "queue stops when a step is skipped (INCOMPLETE)" 3 "$RO/ro-queue.sh" $S baseline short
+grep -q "RO-CHECK INCOMPLETE $S" "$LOG" && PASS=$((PASS+1)) && echo "ok   queue logs INCOMPLETE" || { FAIL=$((FAIL+1)); echo "FAIL queue INCOMPLETE verdict"; }
+reset; expect "queue rejects an unknown step" 1 "$RO/ro-queue.sh" $S bogus
+
+# --- status ---
+mkdir -p "$T/sysblock/sdz"; echo "1 0 2 3 0 0 4 0 0 5 6" > "$T/sysblock/sdz/stat"; export SYS_BLOCK=$T/sysblock
+reset; "$RO/ro-baseline.sh" $S > /dev/null; "$RO/ro-queue.sh" $S baseline short > /dev/null
+expect "status runs" 0 "$RO/ro-status.sh" $S
+grep -q "temp: 31 C now" "$T/out" && PASS=$((PASS+1)) && echo "ok   status shows temperature" || { FAIL=$((FAIL+1)); echo "FAIL status temperature"; }
+grep -q "attr 199 0 / 0" "$T/out" && PASS=$((PASS+1)) && echo "ok   status shows unchanged counters as now / baseline" || { FAIL=$((FAIL+1)); echo "FAIL status counters"; }
+setv A199 12; "$RO/ro-status.sh" $S > "$T/out" 2>&1
+grep -q "attr 199 12 / 0" "$T/out" && PASS=$((PASS+1)) && echo "ok   status shows a rising counter" || { FAIL=$((FAIL+1)); echo "FAIL status rising counter"; }
+grep -q "must stay 0): 4," "$T/out" && PASS=$((PASS+1)) && echo "ok   status reports the sectors-written counter" || { FAIL=$((FAIL+1)); echo "FAIL status sectors written"; }
+
 # --- safety: nothing in the suite may use a write mode ---
 if grep -n -P 'badblocks[^|]* -(w|n)[ s]|ddrescue[^|]*--force|mkfs|wipefs|fsck[^ ]* -[a-z]*[apy]|ntfsfix( |$)(?!.*--no-action)|dd +[^|]*of=/dev|smartctl[^|]*-t +(select|offline)' "$RO"/ro-*.sh "$RO/lib.sh" | grep -v '^[^:]*:[0-9]*: *#'; then
   FAIL=$((FAIL+1)); echo "FAIL write-capable command found"

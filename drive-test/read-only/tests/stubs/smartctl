@@ -19,7 +19,10 @@ case $mode in
       echo "$a Attr_$a 0x0033 100 100 036 Pre-fail Always - $(rd "A$a")"
     done ;;
   -i) echo "Device Model:     STUBDISK 1000"; echo "LU WWN Device Id: 5 000000 000000001" ;;
-  -x) echo "stub full smartctl -x output" ;;
+  -x) echo "stub full smartctl -x output"
+      echo "Current Temperature:                    31 Celsius"
+      echo "Power Cycle Min/Max Temperature:     23/32 Celsius"
+      echo "Lifetime    Min/Max Temperature:     21/52 Celsius" ;;
   -c) if [ -e "$STUB/inprogress" ]; then echo "Self-test routine in progress"; rm -f "$STUB/inprogress"; fi ;;
   -t) echo "Sending command: \"Execute SMART $arg offline immediate self-test routine\"."; echo "Self-testing has begun"; touch "$STUB/inprogress" ;;
   -l)

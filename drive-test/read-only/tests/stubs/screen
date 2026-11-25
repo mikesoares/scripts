@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stub screen -ls: one detached session.
+echo "	123.ro-TESTSERIAL1	(Detached)"

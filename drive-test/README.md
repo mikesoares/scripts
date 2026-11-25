@@ -15,5 +15,5 @@ If in doubt, use `read-only/`. Both suites identify drives by **serial number** 
 drive-test/
 ├── README.md        # This file
 ├── destructive/     # Burn-in pipeline (5 scripts), destroys data
-└── read-only/       # Non-destructive health checks (8 scripts + lib.sh + stub tests)
+└── read-only/       # Non-destructive health checks (10 scripts + lib.sh + tests)
 ```

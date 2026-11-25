@@ -19,6 +19,10 @@ ls -l /dev/disk/by-id | grep -v -- -part
 # 3. Run everything, copying the data to a backup location as the main readability test
 screen -dmS ro-<serial> ./ro-run.sh <serial> --dest /mnt/backup --long
 tail -f ~/drive-test-logs/<serial>-ro.log     # last line is the verdict
+
+# ...or choose the steps and stop at the first failure, then watch it
+screen -dmS ro-<serial> ./ro-queue.sh <serial> baseline short long surface compare
+./ro-status.sh <serial>
 ```
 
 ## What it checks, and what each outcome means
@@ -34,7 +38,7 @@ tail -f ~/drive-test-logs/<serial>-ro.log     # last line is the verdict
 | Orchestrator | `ro-run.sh` | all of the above | | |
 | Notifier | `ro-check-complete.sh` | logs only | `curl`, a webhook URL | n/a |
 
-**Verdict** (last line of `~/drive-test-logs/<serial>-ro.log`): `RO-CHECK PASSED <serial>`, `RO-CHECK WARN <serial>` (nothing failed, but something was skipped or flagged, e.g. a filesystem with no checker, a pre-existing error log), or `RO-CHECK FAILED <serial>` (listed above it). Every script exits 0 passed, 1 failed, 2 warn, 3 skipped.
+**Verdict** (last line of `~/drive-test-logs/<serial>-ro.log`): `RO-CHECK PASSED <serial>`, `RO-CHECK WARN <serial>` (nothing failed, but something was skipped or flagged, e.g. a filesystem with no checker, a pre-existing error log), or `RO-CHECK FAILED <serial>` (listed above it). Every script exits 0 passed, 1 failed, 2 warn, 3 skipped. The queue adds a fourth verdict, `RO-CHECK INCOMPLETE <serial>`, for a run that stopped because a step could not run.
 
 ### Why the order is what it is
 
@@ -69,6 +73,8 @@ tail -f ~/drive-test-logs/<serial>-ro.log     # last line is the verdict
 | `ro-copy-verify.sh` | `./ro-copy-verify.sh <serial> <dest-dir> [--checksum] [--loop]`: rsync (or ddrescue for suspect drives) to `<dest>/<serial>/`, then verify; `--checksum` re-reads both sides in full |
 | `ro-compare.sh` | `./ro-compare.sh <serial>`: takes an `after` snapshot, diffs against `baseline`, scans the kernel log since the baseline |
 | `ro-run.sh` | `./ro-run.sh <serial> [--dest DIR] [--long] [--checksum] [--loop] [--no-surface]` |
+| `ro-queue.sh` | `./ro-queue.sh <serial> <step>...` with steps `baseline short long surface compare`, e.g. `screen -dmS ro-<serial> ./ro-queue.sh <serial> baseline short long surface compare`. Use it instead of `ro-run.sh` to pick steps or to halt at the first failure. PASSED and WARN continue; FAILED stops (`RO-CHECK FAILED`); a step that could not run stops it too (`RO-CHECK INCOMPLETE`). The verdict is the last log line, like `ro-run.sh` |
+| `ro-status.sh` | `./ro-status.sh <serial>`: one-shot report for a running queue or run: stage, self-test or scan progress, temperature, SMART counters now versus the baseline (reallocated, pending, uncorrectable, CRC, timeouts, error log), kernel I/O errors and link resets since the start, bad blocks found, and the device's sectors-written counter. Only reads; safe to call from cron or a notifier for periodic updates. Env: `SYS_BLOCK` (default `/sys/block`) |
 | `ro-check-complete.sh` | `SERIALS="<serial> <serial>" ./ro-check-complete.sh <webhook-url>`: webhook once every listed drive has a verdict |
 | `lib.sh` | Shared helpers (sourced, not run) |
 
@@ -100,7 +106,7 @@ To check your own drives the same way, lock them first (`sudo blockdev --setro /
 
 | File | Description |
 |------|-------------|
-| `~/drive-test-logs/<serial>-ro.log` | Combined log of every step; the last line is the verdict |
+| `~/drive-test-logs/<serial>-ro.log` | Combined log of every step (also written by `ro-queue.sh`); the last line is the verdict |
 | `~/drive-test-logs/<serial>-ro-snapshots/baseline.{txt,attrs}`, `after.{txt,attrs}` | SMART snapshots (full `smartctl -x` and the key=value summary), `started` (epoch of the baseline) |
 | `~/drive-test-logs/<serial>-ro-snapshots/surface-badblocks.txt` | Unreadable block numbers from the surface scan (empty when clean) |
 | `<dest>/<serial>/...` | Copied files, or `*.img` + `*.img.map` ddrescue images, when `--dest` is used |

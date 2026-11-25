@@ -1,0 +1,3 @@
+#!/bin/bash
+# Stub blockdev: --getro reports the flag from $STUB/ro (default 1).
+case $1 in --getro) cat "$STUB/ro" 2>/dev/null || echo 1 ;; esac
