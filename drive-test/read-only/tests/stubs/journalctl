@@ -1,0 +1,2 @@
+#!/bin/bash
+cat "$STUB/klog" 2>/dev/null

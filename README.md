@@ -102,7 +102,7 @@ Per-invocation overrides work in cron too:
 
 ### drive-test/
 
-Five-script pipeline for validating hard drives: SMART pre-check and destructive badblocks test (phase 1), ZFS + f3 + SMART long test with a pass/fail verdict (phase 2), an unattended badblocks queue (full four-pattern run, or single-pass via `BB_PATTERN`), a waiter that starts phase 2 only after badblocks passes, and a completion webhook notifier. See [drive-test/README.md](drive-test/README.md) for full documentation and usage.
+Two suites for checking hard drives and SSDs, kept apart so the wrong one is never run on a drive with data. `destructive/` is a five-script burn-in pipeline for new or wiped drives (SMART pre-check, badblocks write test, ZFS + f3 + SMART long test with a pass/fail verdict, an unattended badblocks queue, a completion webhook notifier). `read-only/` is eight scripts that never write to a drive: SMART baseline and comparison, firmware self-tests, read-only surface scan, no-write filesystem checks, and an optional copy-and-verify of read-only mounted filesystems, with a single verdict line. See [drive-test/README.md](drive-test/README.md) for how to choose, then each suite's own README.
 
 ### npm-add-host/
 
@@ -122,7 +122,7 @@ Pipeline of four scripts for reorganizing a photo archive — fixing timestamps,
 scripts/
 ├── check_connectivity.py      # Network interface connectivity monitor
 ├── optimize_images.py         # Image optimization utility
-├── drive-test/                # Hard drive validation pipeline (5 scripts)
+├── drive-test/                # Hard drive testing: destructive/ burn-in (5 scripts), read-only/ health checks (8 scripts)
 ├── kuma-maintenance/          # Put Uptime Kuma monitors into/out of maintenance by tag
 ├── npm-add-host/              # Add/delete NPM proxy hosts + Let's Encrypt certs via the API
 ├── photo-organization/        # Photo archive reorganization pipeline (4 scripts)

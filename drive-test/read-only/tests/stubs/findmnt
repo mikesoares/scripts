@@ -1,0 +1,7 @@
+#!/bin/bash
+# findmnt -rn -S <dev> -o OPTIONS|TARGET reads "<target> <options>" from $STUB/mnt_<name>;
+# findmnt -rn -T <path> -o SOURCE prints the device holding the path.
+if [ "$2" = -T ]; then cat "$STUB/destsrc" 2>/dev/null || echo /dev/other; exit 0; fi
+f=$STUB/mnt_$(basename "$3")
+[ -e "$f" ] || exit 1
+case " $* " in *OPTIONS*) awk '{print $2}' "$f" ;; *TARGET*) awk '{print $1}' "$f" ;; esac

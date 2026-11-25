@@ -3,7 +3,7 @@
 # scrub + SMART long) on it, but only if badblocks PASSED. Meant to be started in a
 # detached screen session next to the drive's badblocks session.
 # Usage: ./queue-phase2.sh <serial>
-# Example: screen -dmS p2-Z1F1NCRL ./queue-phase2.sh Z1F1NCRL
+# Example: screen -dmS p2-ABC123XYZ ./queue-phase2.sh ABC123XYZ
 #
 # WARNING: phase 2 destroys all data on the drive (it creates a ZFS pool on it).
 #

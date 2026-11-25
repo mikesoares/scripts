@@ -1,0 +1,6 @@
+#!/bin/bash
+# Stub lsblk -lnpo NAME,TYPE <dev>: a disk plus the partitions listed in $STUB/parts_<name>.
+d=${@: -1}
+if [ -e "$STUB/parts_$(basename "$d")" ]; then
+  echo "$d disk"; while read -r p; do echo "$d$p part"; done < "$STUB/parts_$(basename "$d")"
+else echo "$d disk"; fi

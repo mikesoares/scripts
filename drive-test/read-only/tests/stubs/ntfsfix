@@ -1,0 +1,3 @@
+#!/bin/bash
+cat "$STUB/ntfsfix_out" 2>/dev/null || echo "NTFS volume version is 3.1."
+exit "$(cat "$STUB/ntfsfix_rc" 2>/dev/null || echo 0)"

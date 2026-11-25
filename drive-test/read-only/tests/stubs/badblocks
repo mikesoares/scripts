@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stub badblocks: records its arguments, writes $STUB/bad into the -o file.
+echo "$*" >> "$STUB/badblocks-args"
+while [ $# -gt 0 ]; do [ "$1" = -o ] && { cat "$STUB/bad" 2>/dev/null > "$2"; }; shift; done
+exit 0

@@ -1,0 +1,32 @@
+#!/bin/bash
+# Stub smartctl: behaviour comes from small files in $STUB (see ../run-tests.sh).
+rd() { cat "$STUB/$1" 2>/dev/null || echo "${2:-0}"; }
+sat=0; mode=""; arg=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    -d) sat=1; shift ;;
+    -H|-A|-c|-x|-i) mode=$1 ;;
+    -l|-t) mode=$1; arg=$2; shift ;;
+  esac
+  shift
+done
+if [ -e "$STUB/nosmart" ] || { [ -e "$STUB/needsat" ] && [ $sat = 0 ]; }; then echo "SMART support is: Unavailable"; exit 4; fi
+case $mode in
+  -H) echo "SMART overall-health self-assessment test result: $(rd health PASSED)" ;;
+  -A)
+    echo "ID# ATTRIBUTE_NAME FLAG VALUE WORST THRESH TYPE UPDATED WHEN_FAILED RAW_VALUE"
+    for a in 5 9 12 187 188 193 196 197 198 199; do
+      echo "$a Attr_$a 0x0033 100 100 036 Pre-fail Always - $(rd "A$a")"
+    done ;;
+  -i) echo "Device Model:     STUBDISK 1000"; echo "LU WWN Device Id: 5 000000 000000001" ;;
+  -x) echo "stub full smartctl -x output" ;;
+  -c) if [ -e "$STUB/inprogress" ]; then echo "Self-test routine in progress"; rm -f "$STUB/inprogress"; fi ;;
+  -t) echo "Sending command: \"Execute SMART $arg offline immediate self-test routine\"."; echo "Self-testing has begun"; touch "$STUB/inprogress" ;;
+  -l)
+    if [ "$arg" = error ]; then
+      n=$(rd errcount 0); if [ "$n" = 0 ]; then echo "No Errors Logged"; else echo "ATA Error Count: $n"; fi
+    else
+      rd selftest "# 1  Short offline       Completed without error       00%       100         -"
+    fi ;;
+esac
+exit 0

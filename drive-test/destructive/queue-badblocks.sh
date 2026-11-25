@@ -3,7 +3,7 @@
 # destructive badblocks write+read pass (pattern 0xaa) on it. Meant to be started
 # in a detached screen session so several drives can queue at once.
 # Usage: [BB_PATTERN=0xaa] ./queue-badblocks.sh <serial>
-# Example: screen -dmS bb-Z1F1NCRL ./queue-badblocks.sh Z1F1NCRL
+# Example: screen -dmS bb-ABC123XYZ ./queue-badblocks.sh ABC123XYZ
 #
 # WARNING: destroys all data on the drive once the gate passes.
 #

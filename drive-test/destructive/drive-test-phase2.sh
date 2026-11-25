@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run ZFS pool test + f3 + scrub + final SMART for one drive, then judge the results.
 # Usage: ./drive-test-phase2.sh <serial|drive_letter>
-#   serial (preferred): e.g. WD-WCAZA6147923; the drive is found through
+#   serial (preferred): e.g. ABC123XYZ; the drive is found through
 #     /dev/disk/by-id/ata-*_<serial>, so /dev/sdX letters moving after a controller
 #     or cable swap cannot point the test at the wrong disk.
 #   drive_letter: a single letter, e.g. a for /dev/sda (legacy).
