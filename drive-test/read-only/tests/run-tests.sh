@@ -13,6 +13,9 @@ export STUB=$T/stub BYID_DIR=$T/byid LOGDIR=$T/logs SUDO= POLL_SECONDS=0 START_G
 export PATH=$HERE/stubs:$PATH
 mkdir -p "$STUB" "$BYID_DIR" "$LOGDIR" "$T/dev"
 touch "$T/dev/sdz"
+# Sectors-written counter (stat field 7) for ro-baseline/ro-compare/ro-status.
+mkdir -p "$T/sysblock/sdz"; echo "1 0 2 3 0 0 4 0 0 5 6" > "$T/sysblock/sdz/stat"; export SYS_BLOCK=$T/sysblock
+setw() { echo "1 0 2 3 0 0 $1 0 0 5 6" > "$T/sysblock/sdz/stat"; }
 ln -s "$T/dev/sdz" "$BYID_DIR/ata-STUBDISK_TESTSERIAL1"
 S=TESTSERIAL1
 LOG=$LOGDIR/$S-ro.log
@@ -56,6 +59,27 @@ setv errcount 0; echo "kernel: blk_update_request: I/O error, dev sdz, sector 12
 expect "compare: kernel I/O error on the device fails" 1 "$RO/ro-compare.sh" $S
 echo "kernel: ata3: hard resetting link" > "$STUB/klog"; expect "compare: link reset is WARN" 2 "$RO/ro-compare.sh" $S
 reset; expect "compare without baseline skipped" 3 "$RO/ro-compare.sh" $S
+
+# --- write lock and write counter ---
+setw 100
+reset; expect "baseline locks the drive read-only" 0 "$RO/ro-baseline.sh" $S
+grep -q -- '--setro' "$STUB/blockdev-calls" && [ "$(cat "$STUB/ro")" = 1 ] && PASS=$((PASS+1)) && echo "ok   baseline called blockdev --setro on the drive" || { FAIL=$((FAIL+1)); echo "FAIL baseline did not lock the drive"; }
+grep -q '^sectors_written=100$' "$LOGDIR/$S-ro-snapshots/baseline.writes" && PASS=$((PASS+1)) && echo "ok   baseline records the sectors-written counter" || { FAIL=$((FAIL+1)); echo "FAIL baseline.writes"; }
+reset; "$RO/ro-baseline.sh" $S after > /dev/null
+grep -q -- '--setro' "$STUB/blockdev-calls" && { FAIL=$((FAIL+1)); echo "FAIL a non-baseline snapshot locked the drive"; } || { PASS=$((PASS+1)); echo "ok   only the baseline label locks the drive"; }
+reset; touch "$STUB/nosetro"; expect "baseline is WARN when the lock cannot be set" 2 "$RO/ro-baseline.sh" $S
+reset; RO_LOCK=0 expect "baseline with RO_LOCK=0 skips the lock and stays clean" 0 "$RO/ro-baseline.sh" $S
+grep -q -- '--setro' "$STUB/blockdev-calls" && { FAIL=$((FAIL+1)); echo "FAIL RO_LOCK=0 still locked"; } || { PASS=$((PASS+1)); echo "ok   RO_LOCK=0 never calls --setro"; }
+reset; "$RO/ro-baseline.sh" $S > /dev/null
+expect "compare: counter unchanged passes" 0 "$RO/ro-compare.sh" $S
+setw 101; expect "compare: sectors written fails" 1 "$RO/ro-compare.sh" $S
+grep -q "FAILED: 1 sector(s) were written" "$LOG" && PASS=$((PASS+1)) && echo "ok   compare reports the sectors written" || { FAIL=$((FAIL+1)); echo "FAIL compare write message"; }
+setw 100; echo 0 > "$STUB/ro"; expect "compare: lifted lock is WARN" 2 "$RO/ro-compare.sh" $S
+reset; RO_LOCK=0 "$RO/ro-baseline.sh" $S > /dev/null; expect "compare: unlocked baseline gives no lock warning" 0 "$RO/ro-compare.sh" $S
+reset; touch "$STUB/nosmart"; setw 100; "$RO/ro-baseline.sh" $S > /dev/null
+expect "compare: no-SMART drive with no writes is SKIPPED" 3 "$RO/ro-compare.sh" $S
+setw 101; expect "compare: no-SMART drive still fails when sectors were written" 1 "$RO/ro-compare.sh" $S
+setw 4
 
 # --- surface scan ---
 reset; expect "surface scan clean" 0 "$RO/ro-surface-scan.sh" $S
@@ -102,7 +126,7 @@ grep -q "RO-CHECK INCOMPLETE $S" "$LOG" && PASS=$((PASS+1)) && echo "ok   queue 
 reset; expect "queue rejects an unknown step" 1 "$RO/ro-queue.sh" $S bogus
 
 # --- status ---
-mkdir -p "$T/sysblock/sdz"; echo "1 0 2 3 0 0 4 0 0 5 6" > "$T/sysblock/sdz/stat"; export SYS_BLOCK=$T/sysblock
+setw 4
 reset; "$RO/ro-baseline.sh" $S > /dev/null; "$RO/ro-queue.sh" $S baseline short > /dev/null
 expect "status runs" 0 "$RO/ro-status.sh" $S
 grep -q "temp: 31 C now" "$T/out" && PASS=$((PASS+1)) && echo "ok   status shows temperature" || { FAIL=$((FAIL+1)); echo "FAIL status temperature"; }

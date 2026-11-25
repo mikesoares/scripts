@@ -8,10 +8,13 @@
 # Output: $LOGDIR/<serial>-ro-snapshots/<label>.txt   full `smartctl -x`
 #         $LOGDIR/<serial>-ro-snapshots/<label>.attrs key=value summary used for comparisons
 # The "baseline" label also records the start time ($SNAPDIR/started, epoch seconds) that
-# ro-compare.sh uses to scope the kernel-log scan.
+# ro-compare.sh uses to scope the kernel-log scan, and locks the drive read-only in the
+# kernel (blockdev --setro, lasts until reboot; RO_LOCK=0 skips it). Every label saves the
+# drive's sectors-written counter and read-only flag to $SNAPDIR/<label>.writes, which
+# ro-compare.sh checks: the suite never writes, so the counter must not move.
 #
-# Exit: 0 clean, 2 WARN (suspect drive: see `suspect=yes` in the .attrs file),
-#       3 no SMART available.
+# Exit: 0 clean, 2 WARN (suspect drive: see `suspect=yes` in the .attrs file, or the
+#       read-only lock could not be set), 3 no SMART available.
 
 DIR=$(dirname "$(readlink -f "$0")")
 # shellcheck source=lib.sh
@@ -20,6 +23,13 @@ DIR=$(dirname "$(readlink -f "$0")")
 STEP=baseline
 ro_init "${1:-}"
 LABEL=${2:-baseline}
+
+LOCK_WARN=0
+if [ "$LABEL" = baseline ]; then
+  lock_device
+  [ $? -eq 1 ] && LOCK_WARN=1
+fi
+record_writes "$LABEL"
 
 if ! detect_smart; then
   log "SKIPPED: $DEV ($SERIAL) offers no SMART (tried native and -d sat); remaining checks still work"
@@ -74,4 +84,5 @@ if [ "$SUSPECT" = yes ]; then
   exit $RC_WARN
 fi
 log "no bad-sector indicators"
+if [ $LOCK_WARN = 1 ]; then exit $RC_WARN; fi
 exit $RC_PASS

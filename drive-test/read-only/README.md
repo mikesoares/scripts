@@ -1,6 +1,6 @@
 # drive-test: read-only suite
 
-Non-destructive checks for drives that hold data: is it healthy, is it still readable, did testing make it worse? **Nothing in this suite writes to a drive.** It reads SMART, asks the drive firmware to run its own self-tests, reads sectors with `badblocks` in its default read-only mode, runs filesystem checkers in report-only mode, and copies files out of filesystems that are already mounted read-only.
+Non-destructive checks for drives that hold data: is it healthy, is it still readable, did testing make it worse? **Nothing in this suite writes to a drive.** As a second layer, the baseline step also locks the drive read-only in the kernel (`blockdev --setro`) and the compare step fails the run if the drive's sectors-written counter moved. The suite reads SMART, asks the drive firmware to run its own self-tests, reads sectors with `badblocks` in its default read-only mode, runs filesystem checkers in report-only mode, and copies files out of filesystems that are already mounted read-only.
 
 For new or wiped drives where you want a destructive burn-in, see [`../destructive/`](../destructive/README.md).
 
@@ -66,19 +66,19 @@ screen -dmS ro-<serial> ./ro-queue.sh <serial> baseline short long surface compa
 
 | Script | Usage |
 |--------|-------|
-| `ro-baseline.sh` | `./ro-baseline.sh <serial> [label]`: SMART snapshot to `<serial>-ro-snapshots/<label>.{txt,attrs}`; default label `baseline` is the reference for `ro-compare.sh` |
+| `ro-baseline.sh` | `./ro-baseline.sh <serial> [label]`: SMART snapshot to `<serial>-ro-snapshots/<label>.{txt,attrs}`; default label `baseline` is the reference for `ro-compare.sh`. The `baseline` label also locks the drive and its partitions read-only in the kernel (`blockdev --setro`, lasts until reboot, undo with `sudo blockdev --setrw /dev/sdX`; `RO_LOCK=0` skips it; WARN if the lock cannot be set) and every label saves the sectors-written counter and read-only flag to `<label>.writes` |
 | `ro-selftest.sh` | `./ro-selftest.sh <serial> [short\|long]`: runs the drive's self-test and polls to completion (`MAX_WAIT_HOURS`, default 24) |
 | `ro-surface-scan.sh` | `./ro-surface-scan.sh <serial>`: one full read pass with `badblocks` (read-only mode), bad blocks listed in `<serial>-ro-snapshots/surface-badblocks.txt` |
 | `ro-fscheck.sh` | `./ro-fscheck.sh <serial> [--loop]`: `ntfsfix --no-action`, `e2fsck -fn`, `fsck.vfat -n`, `xfs_repair -n`, `btrfs check --readonly` |
 | `ro-copy-verify.sh` | `./ro-copy-verify.sh <serial> <dest-dir> [--checksum] [--loop]`: rsync (or ddrescue for suspect drives) to `<dest>/<serial>/`, then verify; `--checksum` re-reads both sides in full |
-| `ro-compare.sh` | `./ro-compare.sh <serial>`: takes an `after` snapshot, diffs against `baseline`, scans the kernel log since the baseline |
+| `ro-compare.sh` | `./ro-compare.sh <serial>`: takes an `after` snapshot, diffs against `baseline`, scans the kernel log since the baseline, and checks the write counter: any sector written to the drive since the baseline is a FAILED, a lock lifted during the run is a WARN (the write check also runs for drives without SMART) |
 | `ro-run.sh` | `./ro-run.sh <serial> [--dest DIR] [--long] [--checksum] [--loop] [--no-surface]` |
 | `ro-queue.sh` | `./ro-queue.sh <serial> <step>...` with steps `baseline short long surface compare`, e.g. `screen -dmS ro-<serial> ./ro-queue.sh <serial> baseline short long surface compare`. Use it instead of `ro-run.sh` to pick steps or to halt at the first failure. PASSED and WARN continue; FAILED stops (`RO-CHECK FAILED`); a step that could not run stops it too (`RO-CHECK INCOMPLETE`). The verdict is the last log line, like `ro-run.sh` |
 | `ro-status.sh` | `./ro-status.sh <serial>`: one-shot report for a running queue or run: stage, self-test or scan progress, temperature, SMART counters now versus the baseline (reallocated, pending, uncorrectable, CRC, timeouts, error log), kernel I/O errors and link resets since the start, bad blocks found, and the device's sectors-written counter. Only reads; safe to call from cron or a notifier for periodic updates. Env: `SYS_BLOCK` (default `/sys/block`) |
 | `ro-check-complete.sh` | `SERIALS="<serial> <serial>" ./ro-check-complete.sh <webhook-url>`: webhook once every listed drive has a verdict |
 | `lib.sh` | Shared helpers (sourced, not run) |
 
-Environment overrides: `LOGDIR` (default `~/drive-test-logs`), `SUDO` (default `sudo`; empty when already root), `POLL_SECONDS` (default 60), `MAX_WAIT_HOURS`, `BYID_DIR` (default `/dev/disk/by-id`).
+Environment overrides: `LOGDIR` (default `~/drive-test-logs`), `SUDO` (default `sudo`; empty when already root), `POLL_SECONDS` (default 60), `MAX_WAIT_HOURS`, `BYID_DIR` (default `/dev/disk/by-id`), `RO_LOCK` (default 1; 0 skips the kernel read-only lock set by `ro-baseline.sh`), `SYS_BLOCK` (default `/sys/block`, where the sectors-written counter is read).
 
 ## Reading the results
 
@@ -100,7 +100,7 @@ sudo ./tests/prove-readonly.sh
 
 Opt-in proof that the suite writes nothing, with the real tools: builds a 2 GiB sparse image (NTFS + ext4), attaches it as a loop device, runs the suite, and checks the image SHA-256 and the kernel's sectors-written counter are unchanged. It then repeats the run with the device locked by `blockdev --setro`, where any write would be refused. A control write first proves both detectors can see a change. Needs root, `ntfs-3g`, `sfdisk`, `rsync`, `e2fsprogs`; touches no real drive. The overall verdict there is `WARN` because a loop device has no SMART.
 
-To check your own drives the same way, lock them first (`sudo blockdev --setro /dev/sdX`) and compare `/sys/block/sdX/stat` (field 7, sectors written) before and after a run.
+The suite now does this check itself on every run: `ro-baseline.sh` locks the drive and saves the counter, `ro-compare.sh` compares it (`<serial>-ro-snapshots/baseline.writes`). Test 4 of the proof covers it on a read-write device; tests 3 and 2 run with `RO_LOCK=0` so they keep their own read-write and manual-lock setups.
 
 ## Runtime files
 
@@ -108,6 +108,7 @@ To check your own drives the same way, lock them first (`sudo blockdev --setro /
 |------|-------------|
 | `~/drive-test-logs/<serial>-ro.log` | Combined log of every step (also written by `ro-queue.sh`); the last line is the verdict |
 | `~/drive-test-logs/<serial>-ro-snapshots/baseline.{txt,attrs}`, `after.{txt,attrs}` | SMART snapshots (full `smartctl -x` and the key=value summary), `started` (epoch of the baseline) |
+| `~/drive-test-logs/<serial>-ro-snapshots/baseline.writes`, `after.writes` | Sectors-written counter and kernel read-only flag at each snapshot; `ro-compare.sh` fails the run if the counter moved |
 | `~/drive-test-logs/<serial>-ro-snapshots/surface-badblocks.txt` | Unreadable block numbers from the surface scan (empty when clean) |
 | `<dest>/<serial>/...` | Copied files, or `*.img` + `*.img.map` ddrescue images, when `--dest` is used |
 | `~/drive-test-logs/ro-check-complete.log`, `ro-notified.sentinel` | Notifier log and its fire-once marker |

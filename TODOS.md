@@ -6,7 +6,7 @@
 - [ ] **[Debt]** `npm-add-host`: support an `https://` `NPM_URL` with a custom CA bundle (it currently talks to the admin API over plain `http://` on a trusted LAN)
 - [ ] **[Debt]** `npm-add-host`: if NPM ever unpins `certbot-dns-ispconfig` (plugin 0.3.1 fixes the empty `stamp` bug), add an optional DNS-01 wildcard mode
 - [ ] **[Debt]** `drive-test/destructive/drive-test-phase2.sh` has only been tested against stubbed commands; it also always exits 0 even on `PHASE 2 FAILED`, so callers must read the verdict line
-- [ ] **[Debt]** `drive-test/read-only/` has only been tested against stubbed commands (`tests/run-tests.sh`), never against a real drive; first real runs may need parser tweaks (SMART attribute and error-log formats vary by vendor). `shellcheck` was not available when it was written, so run it over `read-only/*.sh`
+- [ ] **[Debt]** `drive-test/read-only/` has been tested against stubbed commands (`tests/run-tests.sh`) and a loop-device image (`tests/prove-readonly.sh`); SMART attribute and error-log formats vary by vendor, so new drive models may need parser tweaks (SMART attribute and error-log formats vary by vendor). `shellcheck` was not available when it was written, so run it over `read-only/*.sh`
 - [ ] **[Docs]** `optimize_images.py` is undocumented in both README.md and CLAUDE.md (drift violation — should be documented or relocated to `qsda/`)
 - [ ] Phase 3: write `photo-flatten.py` — flatten deeply nested directories (depth >= 3) to 1–2 levels based on DB analysis
 - [x] Phase 2: write `photo-rename-dirs.py` — read `photo-db-scan.py` DB output and propose/execute directory renames (add full YYYY-MM-DD prefix, normalize partial/missing dirs)

@@ -1,3 +1,10 @@
 #!/bin/bash
-# Stub blockdev: --getro reports the flag from $STUB/ro (default 1).
-case $1 in --getro) cat "$STUB/ro" 2>/dev/null || echo 1 ;; esac
+# Stub blockdev: --getro reports the flag from $STUB/ro (default 0, as for a fresh drive);
+# --setro sets it to 1 unless $STUB/nosetro exists; --setrw clears it. Calls are logged to
+# $STUB/blockdev-calls.
+echo "$*" >> "$STUB/blockdev-calls"
+case $1 in
+  --getro) cat "$STUB/ro" 2>/dev/null || echo 0 ;;
+  --setro) [ -e "$STUB/nosetro" ] && exit 1; echo 1 > "$STUB/ro" ;;
+  --setrw) echo 0 > "$STUB/ro" ;;
+esac

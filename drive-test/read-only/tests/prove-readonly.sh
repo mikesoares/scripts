@@ -13,6 +13,10 @@
 #   test 2   `blockdev --setro` on the device and partitions, then the suite again: it must
 #            still pass its filesystem, copy and surface steps, a deliberate write must be
 #            refused, and the kernel log must show no write attempts
+#   test 4   the suite locks the drive itself: ro-baseline.sh on a read-write device must
+#            set the kernel read-only flag, a deliberate write must then be refused, and
+#            ro-compare.sh must report no sectors written (tests 3 and 2 run with RO_LOCK=0,
+#            so that test 3 really is read-write and test 2 uses its own lock)
 # The overall verdict is WARN, not PASSED, because a loop device has no SMART; the SMART
 # steps are skipped. Exit status: 0 all checks passed, 1 any failed, 2 not run (not root).
 set -u
@@ -54,7 +58,7 @@ H0=$(sha256sum disk.img | cut -d' ' -f1); echo "image sha256 before: $H0"
 LOOP=$(losetup -P -f --show disk.img)     # attached READ-WRITE on purpose: a write would succeed
 ln -s "$LOOP" byid/ata-PROOF_PROOFSERIAL
 mount -t ntfs3 -o ro "${LOOP}p1" mnt/ntfs; mount -o ro "${LOOP}p2" mnt/ext
-export BYID_DIR=$W/byid LOGDIR=$W/logs SUDO= POLL_SECONDS=0 START_GRACE_SECONDS=0
+export BYID_DIR=$W/byid LOGDIR=$W/logs SUDO= POLL_SECONDS=0 START_GRACE_SECONDS=0 RO_LOCK=0
 
 run() { # <name> <args...>
   local n=$1; shift
@@ -86,5 +90,15 @@ if dmesg | grep -i -E 'read-only|Operation not permitted|I/O error' | grep -i "$
 if ! grep -q 'RO-CHECK FAILED' "$W/run-locked.out" "$W/run-lockedsurf.out" && grep -q 'fscheck: PASSED' "$W/run-locked.out" && grep -q 'copy: PASSED' "$W/run-locked.out" && grep -q 'surface: PASSED' "$W/run-lockedsurf.out"; then ok "fscheck, copy+verify and surface scan all PASSED on the write-locked device (WARN overall only because a loop device has no SMART)"; else bad "a step failed when the device was locked"; tail -15 "$W/run-locked.out"; fi
 umount mnt/ntfs mnt/ext; blockdev --setrw "$LOOP" 2>/dev/null; losetup -d "$LOOP"; LOOP=""
 H2=$(sha256sum disk.img | cut -d' ' -f1); [ "$H0" = "$H2" ] && ok "image still identical after the locked run" || bad "image changed after locked run"
+echo; echo "== TEST 4: the suite locks the drive itself (RO_LOCK default) =="
+LOOP=$(losetup -P -f --show disk.img); rm -f byid/*; ln -s "$LOOP" byid/ata-PROOF_PROOFSERIAL; rm -rf logs/*
+[ "$(blockdev --getro "$LOOP")" = 0 ] && ok "device starts read-write" || bad "device did not start read-write"
+RO_LOCK=1 "$RO/ro-baseline.sh" PROOFSERIAL > "$W/run-lock.out" 2>&1
+[ "$(blockdev --getro "$LOOP")" = 1 ] && ok "TEST 4: ro-baseline.sh locked the device (blockdev --getro = 1)" || bad "TEST 4: ro-baseline.sh did not lock the device"
+if dd if=/dev/zero of="$LOOP" bs=512 count=1 oflag=direct 2>/dev/null; then bad "TEST 4: write to the suite-locked device SUCCEEDED"; else ok "TEST 4: a deliberate write to the suite-locked device is refused"; fi
+RO_LOCK=1 "$RO/ro-compare.sh" PROOFSERIAL > "$W/run-lockcmp.out" 2>&1
+grep -q "no sectors written" "$W/run-lockcmp.out" && ok "TEST 4: ro-compare.sh reports no sectors written" || { bad "TEST 4: ro-compare.sh did not report an unchanged write counter"; tail -5 "$W/run-lockcmp.out"; }
+blockdev --setrw "$LOOP" 2>/dev/null; losetup -d "$LOOP"; LOOP=""
+H3=$(sha256sum disk.img | cut -d' ' -f1); [ "$H0" = "$H3" ] && ok "image still identical after test 4" || bad "image changed after test 4"
 echo; echo "== $PASS passed, $FAIL failed =="; echo "full run output in $W/run-*.out"
 [ "$FAIL" -eq 0 ]

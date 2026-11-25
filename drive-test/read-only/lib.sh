@@ -16,11 +16,15 @@
 #   BYID_DIR      directory holding the by-id symlinks (default /dev/disk/by-id)
 #   SUDO          privilege prefix (default "sudo"; set SUDO= when already root)
 #   POLL_SECONDS  self-test poll interval (default 60)
+#   RO_LOCK       1 (default): ro-baseline.sh locks the drive read-only in the kernel
+#                 (blockdev --setro) at the start of a run; 0 skips the lock
+#   SYS_BLOCK     sysfs block directory for the sectors-written counter (default /sys/block)
 
 LOGDIR=${LOGDIR:-$HOME/drive-test-logs}
 BYID_DIR=${BYID_DIR:-/dev/disk/by-id}
 SUDO=${SUDO-sudo}
 POLL_SECONDS=${POLL_SECONDS:-60}
+RO_LOCK=${RO_LOCK:-1}
 
 RC_PASS=0 RC_FAIL=1 RC_WARN=2 RC_SKIP=3
 
@@ -115,6 +119,39 @@ errlog_count() {
 
 # attr_get <file> <key>: value of key=value in a snapshot .attrs file.
 attr_get() { sed -n "s/^$2=//p" "$1" 2>/dev/null | head -1; }
+
+# sectors_written: sectors written to the whole drive since boot (field 7 of the sysfs stat
+# file; empty if unreadable). Zero-length flushes do not count, so a read-only run keeps it flat.
+sectors_written() { awk '{print $7}' "${SYS_BLOCK:-/sys/block}/$DEVNAME/stat" 2>/dev/null; }
+
+# ro_flag: the kernel's read-only flag of the drive (1 = writes are refused).
+ro_flag() { $SUDO blockdev --getro "$DEV" 2>/dev/null; }
+
+# lock_device: make the kernel refuse every write to the drive and its partitions, as a second
+# layer under the read-only commands. Returns 0 locked, 1 failed, 2 skipped (RO_LOCK=0). The
+# flag lasts until reboot; undo with `blockdev --setrw`. SMART commands and self-tests still work.
+lock_device() {
+  if [ "$RO_LOCK" != 1 ]; then
+    log "read-only lock skipped (RO_LOCK=$RO_LOCK)"; return 2
+  fi
+  local p
+  $SUDO blockdev --setro "$DEV" 2>/dev/null
+  while read -r p; do
+    [ -n "$p" ] && $SUDO blockdev --setro "$p" 2>/dev/null
+  done < <(lsblk -lnpo NAME,TYPE "$DEV" 2>/dev/null | awk '$2=="part" { print $1 }')
+  if [ "$(ro_flag)" = 1 ]; then
+    log "locked $DEV read-only (blockdev --setro, until reboot); undo with: sudo blockdev --setrw $DEV"
+    return 0
+  fi
+  log "WARN: could not lock $DEV read-only; the commands in this suite still never write"
+  return 1
+}
+
+# record_writes <label>: save the sectors-written counter and read-only flag next to the
+# SMART snapshot of the same label (ro-compare.sh compares "baseline" with the later state).
+record_writes() {
+  { echo "sectors_written=$(sectors_written)"; echo "ro_flag=$(ro_flag)"; } > "$SNAPDIR/$1.writes"
+}
 
 # collect_parts: set PARTS to every block device carrying a filesystem for this drive:
 # its partitions (or the bare disk if it holds a filesystem directly) plus the partitions

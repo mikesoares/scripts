@@ -6,8 +6,12 @@
 # Example: ./ro-compare.sh ABC123XYZ
 #
 # Needs a baseline from ro-baseline.sh. Writes the "after" snapshot next to it.
-# Exit: 0 unchanged, 1 failure indicators rose or kernel I/O errors on the drive,
-#       2 WARN (softer indicators rose, or link resets seen), 3 no baseline / no SMART.
+# It also checks the write counters saved by ro-baseline.sh: the suite never writes, so any
+# sectors written to the drive since the baseline is a failure, and a read-only lock that was
+# set at the baseline but has been lifted since is a warning.
+# Exit: 0 unchanged, 1 failure indicators rose, kernel I/O errors on the drive, or sectors
+#       were written, 2 WARN (softer indicators rose, link resets seen, or the lock was
+#       lifted), 3 no baseline / no SMART.
 
 DIR=$(dirname "$(readlink -f "$0")")
 # shellcheck source=lib.sh
@@ -16,14 +20,32 @@ DIR=$(dirname "$(readlink -f "$0")")
 STEP=compare
 ro_init "${1:-}"
 BASE=$SNAPDIR/baseline.attrs
+FAILS=0 WARNS=0
+# Writes: counter against the baseline, and the lock.
+WB=$SNAPDIR/baseline.writes
+if [ -f "$WB" ]; then
+  w0=$(attr_get "$WB" sectors_written); w1=$(sectors_written)
+  if [[ $w0 =~ ^[0-9]+$ && $w1 =~ ^[0-9]+$ ]]; then
+    if [ "$w1" -gt "$w0" ]; then
+      log "FAILED: $((w1 - w0)) sector(s) were written to $DEV since the baseline (this suite never writes; something else did)"; FAILS=$((FAILS+1))
+    else
+      log "no sectors written to $DEV since the baseline"
+    fi
+  fi
+  if [ "$(attr_get "$WB" ro_flag)" = 1 ] && [ "$(ro_flag)" != 1 ]; then
+    log "WARN: the read-only lock on $DEV was lifted during the run"; WARNS=$((WARNS+1))
+  fi
+fi
+
 if [ ! -f "$BASE" ] || [ "$(attr_get "$BASE" smart)" != ok ]; then
+  # A drive without SMART still gets the write check above.
+  if [ $FAILS -gt 0 ]; then log "FAILED: $FAILS indicator(s) got worse during the run"; exit $RC_FAIL; fi
   log "SKIPPED: no usable baseline snapshot (run ro-baseline.sh first, or the drive has no SMART)"
   exit $RC_SKIP
 fi
 
 "$DIR/ro-baseline.sh" "$SERIAL" after > /dev/null
 AFTER=$SNAPDIR/after.attrs
-FAILS=0 WARNS=0
 
 # rose <key>: true when the numeric value grew since the baseline.
 rose() {
